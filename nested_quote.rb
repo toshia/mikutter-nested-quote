@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 
 class Gdk::NestedQuote < Gdk::SubParts
-  regist
+  #regist
 
-  TWEET_URL = /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)$/
+  TWEET_URL = /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/
   attr_reader :icon_width, :icon_height
 
   def initialize(*args)
     super
-    @icon_width, @icon_height, @margin = 24, 24, 2
+    @icon_width, @icon_height, @margin, @edge = 32, 32, 2, 8
     @message_got = false
     if not get_tweet_ids.empty?
       Deferred.when(*get_tweet_ids.map{ |message_id|
@@ -32,16 +32,19 @@ class Gdk::NestedQuote < Gdk::SubParts
 
   def render(context)
     if helper.visible? and messages
-      context.save{
-        context.translate(@margin, 0)
+      render_outline(context)
+      context.save {
+        context.translate(@margin+@edge, @margin+@edge)
         render_main_icon(context)
         context.translate(@icon_width + @margin, 0)
-        context.set_source_rgb(*(UserConfig[:mumble_reply_color] || [0,0,0]).map{ |c| c.to_f / 65536 })
-        context.show_pango_layout(main_message(context)) } end end
+        context.set_source_rgb(*([0,0,0]).map{ |c| c.to_f / 65536 })
+        context.show_pango_layout(main_message(context)) }
+    end
+  end
 
   def height
     if not(helper.destroyed?) and has_tweet_url?
-      icon_height
+      icon_height + (@margin+@edge)*2
     else
       0 end end
 
@@ -66,12 +69,12 @@ class Gdk::NestedQuote < Gdk::SubParts
     @messages if @message_got end
 
   def escaped_main_text
-    Pango.escape(message.to_show) end
+    Pango.escape(messages.first.to_show) end
 
   def main_message(context = dummy_context)
     attr_list, text = Pango.parse_markup(escaped_main_text)
     layout = context.create_pango_layout
-    layout.width = (width - @icon_width - @margin*3) * Pango::SCALE
+    layout.width = (width - @icon_width - @margin - @edge*2) * Pango::SCALE
     layout.attributes = attr_list
     layout.wrap = Pango::WRAP_CHAR
     layout.font_description = Pango::FontDescription.new(UserConfig[:mumble_reply_font])
@@ -81,6 +84,21 @@ class Gdk::NestedQuote < Gdk::SubParts
   def render_main_icon(context)
     context.set_source_pixbuf(main_icon)
     context.paint
+  end
+
+  def render_outline(context)
+    context.save {
+      context.pseudo_blur(4) {
+        context.fill {
+          context.set_source_rgb(*([32767, 32767, 32767]).map{ |c| c.to_f / 65536 })
+          context.rounded_rectangle(@edge, @edge, width-@edge*2, height-@edge*2, 4)
+        }
+      }
+      context.fill {
+        context.set_source_rgb(*([65535, 65535, 65535]).map{ |c| c.to_f / 65536 })
+        context.rounded_rectangle(@edge, @edge, width-@edge*2, height-@edge*2, 4)
+      }
+    }
   end
 
   def main_icon
