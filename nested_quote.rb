@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 class Gdk::NestedQuote < Gdk::SubParts
-  #regist
+  regist
 
   TWEET_URL = /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/
   attr_reader :icon_width, :icon_height
