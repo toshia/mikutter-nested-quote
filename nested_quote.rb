@@ -10,22 +10,26 @@ class Gdk::NestedQuote < Gdk::SubParts
     super
     @icon_width, @icon_height, @margin, @edge = 32, 32, 2, 8
     @message_got = false
+    @messages = []
     if not get_tweet_ids.empty?
-      Deferred.when(*get_tweet_ids.map{ |message_id|
-                      Thread.new {Message.findbyid(message_id.to_i) }
-                    }).next(&method(:render_message)).terminate end
-    if message and not helper.visible?
+      get_tweet_ids.each{ |message_id|
+        Thread.new {
+          m = Message.findbyid(message_id.to_i)
+          if m.is_a? Message
+            Delayer.new{
+              render_message(m) } end } } end
+      if message and not helper.visible?
       sid = helper.ssc(:expose_event, helper){
         helper.on_modify
         helper.signal_handler_disconnect(sid)
         false } end
   end
 
-  def render_message(messages)
-    notice messages
+  def render_message(message)
+    notice "found #{message.to_s}"
     if not helper.destroyed?
       @message_got = true
-      @messages = messages
+      @messages << message
       helper.on_modify
       helper.reset_height end
   end
