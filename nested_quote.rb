@@ -33,18 +33,19 @@ class Gdk::NestedQuote < Gdk::SubParts
   def render(context)
     if helper.visible? and messages
       render_outline(context)
+      header(context)
       context.save {
         context.translate(@margin+@edge, @margin+@edge)
         render_main_icon(context)
-        context.translate(@icon_width + @margin, 0)
+        context.translate(@icon_width + @margin*2, header_left.size[1]/Pango::SCALE)
         context.set_source_rgb(*([0,0,0]).map{ |c| c.to_f / 65536 })
         context.show_pango_layout(main_message(context)) }
     end
   end
 
   def height
-    if not(helper.destroyed?) and has_tweet_url?
-      icon_height + (@margin+@edge)*2
+    if not(helper.destroyed?) and has_tweet_url? and messages and not messages.empty?
+      [icon_height, (header_left.size[1]+main_message.size[1])/Pango::SCALE].max + (@margin+@edge)*2
     else
       0 end end
 
@@ -68,13 +69,61 @@ class Gdk::NestedQuote < Gdk::SubParts
   def messages
     @messages if @message_got end
 
+  # ヘッダ（左）のための Pango::Layout のインスタンスを返す
+  def header_left(context = dummy_context)
+    message = messages.first
+    attr_list, text = Pango.parse_markup("<b>#{Pango.escape(message[:user][:idname])}</b> #{Pango.escape(message[:user][:name] || '')}")
+    layout = context.create_pango_layout
+    layout.attributes = attr_list
+    layout.font_description = Pango::FontDescription.new(UserConfig[:mumble_basic_font])
+    layout.text = text
+    layout end
+
+  # ヘッダ（右）のための Pango::Layout のインスタンスを返す
+  def header_right(context = dummy_context)
+    message = messages.first
+    now = Time.now
+    hms = if message[:created].year == now.year && message[:created].month == now.month && message[:created].day == now.day
+            message[:created].strftime('%H:%M:%S')
+          else
+            message[:created].strftime('%Y/%m/%d %H:%M:%S')
+          end
+    attr_list, text = Pango.parse_markup("<span foreground=\"#999999\">#{Pango.escape(hms)}</span>")
+    layout = context.create_pango_layout
+    layout.attributes = attr_list
+    layout.font_description = Pango::FontDescription.new(UserConfig[:mumble_basic_font])
+    layout.text = text
+    layout.alignment = Pango::ALIGN_RIGHT
+    layout end
+
+  def header(context)
+    header_w = width - @icon_width - @margin*3 - @edge*2
+    context.save{
+      context.translate(@icon_width + @margin*2 + @edge, @margin + @edge)
+      context.set_source_rgb(0,0,0)
+      hl_layout, hr_layout = header_left(context), header_right(context)
+      context.show_pango_layout(hl_layout)
+      context.save{
+        context.translate(header_w - hr_layout.size[0] / Pango::SCALE, 0)
+        if (hl_layout.size[0] / Pango::SCALE) > header_w - hr_layout.size[0] / Pango::SCALE - 20
+          r, g, b = get_backgroundcolor
+          grad = Cairo::LinearPattern.new(-20, 0, hr_layout.size[0] / Pango::SCALE + 20, 0)
+          grad.add_color_stop_rgba(0.0, r, g, b, 0.0)
+          grad.add_color_stop_rgba(20.0 / (hr_layout.size[0] / Pango::SCALE + 20), r, g, b, 1.0)
+          grad.add_color_stop_rgba(1.0, r, g, b, 1.0)
+          context.rectangle(-20, 0, hr_layout.size[0] / Pango::SCALE + 20, hr_layout.size[1] / Pango::SCALE)
+          context.set_source(grad)
+          context.fill() end
+        context.show_pango_layout(hr_layout) } }
+  end
+
   def escaped_main_text
     Pango.escape(messages.first.to_show) end
 
   def main_message(context = dummy_context)
     attr_list, text = Pango.parse_markup(escaped_main_text)
     layout = context.create_pango_layout
-    layout.width = (width - @icon_width - @margin - @edge*2) * Pango::SCALE
+    layout.width = (width - @icon_width - @margin*3 - @edge*2) * Pango::SCALE
     layout.attributes = attr_list
     layout.wrap = Pango::WRAP_CHAR
     layout.font_description = Pango::FontDescription.new(UserConfig[:mumble_reply_font])
@@ -108,5 +157,12 @@ class Gdk::NestedQuote < Gdk::SubParts
 
   def message
     helper.message end
+
+  def dummy_context
+    Gdk::Pixmap.new(nil, 1, 1, helper.color).create_cairo_context end
+
+  def get_backgroundcolor
+    [1.0, 1.0, 1.0]
+  end
 
 end
