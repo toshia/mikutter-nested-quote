@@ -3,7 +3,8 @@
 class Gdk::NestedQuote < Gdk::SubParts
   regist
 
-  TWEET_URL = /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/
+  TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/,
+                /^http:\/\/favstar\.fm\/users\/[a-zA-Z0-9_]+\/status\/(\d+)/ ]
   attr_reader :icon_width, :icon_height
 
   def initialize(*args)
@@ -55,10 +56,16 @@ class Gdk::NestedQuote < Gdk::SubParts
 
   private
 
+  def id2url(url)
+    TWEET_URL.each{ |regexp|
+      m = regexp.match(url)
+      return m[1] if m }
+    false end
+
   # ツイートへのリンクを含んでいれば真
   def has_tweet_url?
     message.entity.any?{ |entity|
-      :urls == entity[:slug] and TWEET_URL.match(entity[:expanded_url]) } end
+      :urls == entity[:slug] and id2url(entity[:expanded_url]) } end
 
   # ツイートの本文に含まれるツイートのパーマリンクを返す
   # ==== Return
@@ -66,9 +73,7 @@ class Gdk::NestedQuote < Gdk::SubParts
   def get_tweet_ids
     message.entity.map{ |entity|
       if :urls == entity[:slug]
-        matched = TWEET_URL.match(entity[:expanded_url])
-        if matched
-          matched[1] end end }.select(&ret_nth) end
+        id2url(entity[:expanded_url]) end }.select(&ret_nth) end
 
   def messages
     @messages if @message_got end
