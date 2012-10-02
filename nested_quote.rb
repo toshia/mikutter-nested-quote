@@ -180,10 +180,7 @@ Plugin.create :nested_quote do
     command(:copy_tweet_url,
       name: 'ツイートのURLをコピー',
       condition: Proc.new{ |opt|
-        not opt.messages.empty? { |m|
-          not m.messages.system? 
-        }
-      },
+        not opt.messages.any?(&:system?)},
       visible: true,
       role: :timeline) do |opt|
         Gtk::Clipboard.copy("https://twitter.com/#{opt.messages.first.message.idname}/statuses/#{opt.messages.first.message.id}")
