@@ -186,6 +186,6 @@ Plugin.create :nested_quote do
       },
       visible: true,
       role: :timeline) do |opt|
-        Gtk::Clipboard.copy("https://twitter.com/#!/#{opt.messages.first.message.idname}/statuses/#{opt.messages.first.message.id}")
+        Gtk::Clipboard.copy("https://twitter.com/#{opt.messages.first.message.idname}/statuses/#{opt.messages.first.message.id}")
   end
 end
