@@ -177,17 +177,15 @@ class Gdk::NestedQuote < Gdk::SubParts
 end
 
 Plugin.create :nested_quote do
-  filter_command do |menu|
-    menu[:copy_tweet_url] = {
-      :slug => :copy_tweet_url,
-      :name => 'ツイートのURLをコピー',
-      :condition => lambda{ |m| !m.message.system? },
-      :exec => lambda{ |m|
-        Gtk::Clipboard.copy("https://twitter.com/#!/#{m.message.user[:idname]}/statuses/#{m.message[:id]}")
+    command(:copy_tweet_url,
+      name: 'ツイートのURLをコピー',
+      condition: Proc.new{ |opt|
+        not opt.messages.empty? { |m|
+          not m.messages.system? 
+        }
       },
-      :visible => true,
-      :role => :message }
-    [menu]
+      visible: true,
+      role: :timeline) do |opt|
+        Gtk::Clipboard.copy("https://twitter.com/#!/#{opt.messages.first.message.idname}/statuses/#{opt.messages.first.message.id}")
   end
-
 end
