@@ -19,11 +19,6 @@ class Gdk::NestedQuote < Gdk::SubParts
           if m.is_a? Message
             Delayer.new{
               render_message(m) } end } } end
-      if message and not helper.visible?
-      sid = helper.ssc(:expose_event, helper){
-        helper.on_modify
-        helper.signal_handler_disconnect(sid)
-        false } end
   end
 
   def render_message(message)
@@ -36,7 +31,7 @@ class Gdk::NestedQuote < Gdk::SubParts
   end
 
   def render(context)
-    if helper.visible? and messages
+    if messages
       render_outline(context)
       header(context)
       context.save {
