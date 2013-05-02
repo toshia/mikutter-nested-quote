@@ -4,7 +4,9 @@ class Gdk::NestedQuote < Gdk::SubParts
   regist
 
   TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/,
-                /^http:\/\/favstar\.fm\/users\/[a-zA-Z0-9_]+\/status\/(\d+)/ ]
+                /^http:\/\/favstar\.fm\/users\/[a-zA-Z0-9_]+\/status\/(\d+)/,
+                /^http:\/\/aclog\.koba789\.com\/i\/(\d+)/]
+
   attr_reader :icon_width, :icon_height
 
   def initialize(*args)
