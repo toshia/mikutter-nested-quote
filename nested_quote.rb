@@ -12,42 +12,31 @@ class Gdk::NestedQuote < Gdk::SubParts
   def initialize(*args)
     super
     @icon_width, @icon_height, @margin, @edge = 32, 32, 2, 8
-    @message_got = false
-    @messages = []
-    if not get_tweet_ids.empty?
-      get_tweet_ids.each{ |message_id|
-        Thread.new {
-          m = Message.findbyid(message_id.to_i)
-          if m.is_a? Message
-            Delayer.new{
-              render_message(m) } end } } end
-  end
+    if has_tweet_url?
+      Thread.new(get_tweet_ids) { |tweet_ids|
+        messages = []
+        tweet_ids.each_with_index.map { |message_id, i|
+          Thread.new(message_id, i) { |message_id, i|
+            messages[i] = Message.findbyid(message_id.to_i) } }.each(&:join)
+        @messages = messages.select { |m| m.is_a? Message }
+        Delayer.new {
+          render_messages } } end end
 
-  def render_message(message)
-    notice "found #{message.to_s}"
+  def render_messages
+    notice "found #{@messages.inspect}"
     if not helper.destroyed?
-      @message_got = true
-      @messages << message
       helper.on_modify
       helper.reset_height end
   end
 
   def render(context)
-    if messages
-      render_outline(context)
-      header(context)
-      context.save {
-        context.translate(@margin+@edge, @margin+@edge)
-        render_main_icon(context)
-        context.translate(@icon_width + @margin*2, header_left.size[1]/Pango::SCALE)
-        context.set_source_rgb(*([0,0,0]).map{ |c| c.to_f / 65536 })
-        context.show_pango_layout(main_message(context)) }
-    end
-  end
+    if @messages and not @messages.empty?
+      @messages.inject(0) { |base_y, message|
+        render_single_message(message, context, base_y) } end end
 
   def height
-    if not(helper.destroyed?) and has_tweet_url? and messages and not messages.empty?
-      [icon_height, (header_left.size[1]+main_message.size[1])/Pango::SCALE].max + (@margin+@edge)*2
+    if not helper.destroyed? and @messages and not @messages.empty?
+      @messages.inject(0) { |s, m| s + message_height(m) }
     else
       0 end end
 
@@ -61,23 +50,36 @@ class Gdk::NestedQuote < Gdk::SubParts
 
   # ツイートへのリンクを含んでいれば真
   def has_tweet_url?
-    message.entity.any?{ |entity|
+    helper.message.entity.any?{ |entity|
       :urls == entity[:slug] and id2url(entity[:expanded_url]) } end
 
   # ツイートの本文に含まれるツイートのパーマリンクを返す
   # ==== Return
   # URLの配列
   def get_tweet_ids
-    message.entity.map{ |entity|
+    helper.message.entity.map{ |entity|
       if :urls == entity[:slug]
         id2url(entity[:expanded_url]) end }.select(&ret_nth) end
 
-  def messages
-    @messages if @message_got end
+  def render_single_message(message, context, base_y)
+    render_outline(message, context, base_y)
+    render_header(message, context, base_y)
+    context.save {
+      context.translate(@margin + @edge, @margin + @edge + base_y)
+      context.set_source_pixbuf(main_icon(message))
+      context.paint
+      context.translate(icon_width + @margin*2, header_left(message).size[1] / Pango::SCALE)
+      context.set_source_rgb(*([0,0,0]).map{ |c| c.to_f / 65536 })
+      context.show_pango_layout(main_message(message, context)) }
+
+    base_y + message_height(message) end
+
+  def message_height(message)
+    [icon_height, (header_left(message).size[1] + main_message(message).size[1]) / Pango::SCALE].max + (@margin + @edge) * 2
+  end
 
   # ヘッダ（左）のための Pango::Layout のインスタンスを返す
-  def header_left(context = dummy_context)
-    message = messages.first
+  def header_left(message, context = dummy_context)
     attr_list, text = Pango.parse_markup("<b>#{Pango.escape(message[:user][:idname])}</b> #{Pango.escape(message[:user][:name] || '')}")
     layout = context.create_pango_layout
     layout.attributes = attr_list
@@ -86,8 +88,7 @@ class Gdk::NestedQuote < Gdk::SubParts
     layout end
 
   # ヘッダ（右）のための Pango::Layout のインスタンスを返す
-  def header_right(context = dummy_context)
-    message = messages.first
+  def header_right(message, context = dummy_context)
     now = Time.now
     hms = if message[:created].year == now.year && message[:created].month == now.month && message[:created].day == now.day
             message[:created].strftime('%H:%M:%S')
@@ -102,32 +103,29 @@ class Gdk::NestedQuote < Gdk::SubParts
     layout.alignment = Pango::ALIGN_RIGHT
     layout end
 
-  def header(context)
+  def render_header(message, context, base_y)
     header_w = width - @icon_width - @margin*3 - @edge*2
     context.save{
-      context.translate(@icon_width + @margin*2 + @edge, @margin + @edge)
+      context.translate(@icon_width + @margin*2 + @edge, @margin + @edge + base_y)
       context.set_source_rgb(0,0,0)
-      hl_layout, hr_layout = header_left(context), header_right(context)
+      hl_layout, hr_layout = header_left(message, context), header_right(message, context)
       context.show_pango_layout(hl_layout)
       context.save{
         context.translate(header_w - hr_layout.size[0] / Pango::SCALE, 0)
         if (hl_layout.size[0] / Pango::SCALE) > header_w - hr_layout.size[0] / Pango::SCALE - 20
           r, g, b = get_backgroundcolor
-          grad = Cairo::LinearPattern.new(-20, 0, hr_layout.size[0] / Pango::SCALE + 20, 0)
+          grad = Cairo::LinearPattern.new(-20, base_y, hr_layout.size[0] / Pango::SCALE + 20, base_y)
           grad.add_color_stop_rgba(0.0, r, g, b, 0.0)
           grad.add_color_stop_rgba(20.0 / (hr_layout.size[0] / Pango::SCALE + 20), r, g, b, 1.0)
           grad.add_color_stop_rgba(1.0, r, g, b, 1.0)
-          context.rectangle(-20, 0, hr_layout.size[0] / Pango::SCALE + 20, hr_layout.size[1] / Pango::SCALE)
+          context.rectangle(-20, base_y, hr_layout.size[0] / Pango::SCALE + 20, hr_layout.size[1] / Pango::SCALE + base_y)
           context.set_source(grad)
           context.fill() end
         context.show_pango_layout(hr_layout) } }
   end
 
-  def escaped_main_text
-    Pango.escape(messages.first.to_show) end
-
-  def main_message(context = dummy_context)
-    attr_list, text = Pango.parse_markup(escaped_main_text)
+  def main_message(message, context = dummy_context)
+    attr_list, text = Pango.parse_markup(Pango.escape(message.to_show))
     layout = context.create_pango_layout
     layout.width = (width - @icon_width - @margin*3 - @edge*2) * Pango::SCALE
     layout.attributes = attr_list
@@ -136,41 +134,29 @@ class Gdk::NestedQuote < Gdk::SubParts
     layout.text = text
     layout end
 
-  def render_main_icon(context)
-    context.set_source_pixbuf(main_icon)
-    context.paint
-  end
-
-  def render_outline(context)
+  def render_outline(message, context, base_y)
+    mh = message_height(message)
     context.save {
       context.pseudo_blur(4) {
         context.fill {
           context.set_source_rgb(*([32767, 32767, 32767]).map{ |c| c.to_f / 65536 })
-          context.rounded_rectangle(@edge, @edge, width-@edge*2, height-@edge*2, 4)
+          context.rounded_rectangle(@edge, @edge + base_y, width - @edge*2, mh - @edge*2, 4)
         }
       }
       context.fill {
         context.set_source_rgb(*([65535, 65535, 65535]).map{ |c| c.to_f / 65536 })
-        context.rounded_rectangle(@edge, @edge, width-@edge*2, height-@edge*2, 4)
+        context.rounded_rectangle(@edge, @edge + base_y, width - @edge*2, mh - @edge*2, 4)
       }
     }
   end
 
-  def main_icon
-    @main_icon ||= Gdk::WebImageLoader.pixbuf(messages.first[:user][:profile_image_url], icon_width, icon_height){ |pixbuf|
-      @main_icon = pixbuf
+  def main_icon(message)
+    Gdk::WebImageLoader.pixbuf(message[:user][:profile_image_url], icon_width, icon_height){ |pixbuf|
       helper.on_modify } end
-
-  def message
-    helper.message end
-
-  def dummy_context
-    Gdk::Pixmap.new(nil, 1, 1, helper.color).create_cairo_context end
 
   def get_backgroundcolor
     [1.0, 1.0, 1.0]
   end
-
 end
 
 Plugin.create :nested_quote do
