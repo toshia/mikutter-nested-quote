@@ -26,8 +26,21 @@ class Gdk::NestedQuote < Gdk::SubParts
     notice "found #{@messages.inspect}"
     if not helper.destroyed?
       helper.on_modify
-      helper.reset_height end
-  end
+      helper.reset_height
+      helper.ssc(:click) { |this, e, x, y|
+        ofsty = helper.mainpart_height
+        helper.subparts.each { |part|
+          break if part == self
+          ofsty += part.height }
+        if ofsty <= y and (ofsty + height) >= y
+          case e.button
+          when 1
+            my = 0
+            @messages.each { |m|
+              my += message_height(m)
+              if y <= ofsty + my
+                Plugin.filtering(:command, {}).first[:smartthread][:exec].call(Struct.new(:messages).new([m]))
+                break end } end end } end end
 
   def render(context)
     if @messages and not @messages.empty?
