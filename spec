@@ -5,7 +5,7 @@ depends:
   plugin:
   - gtk
   - gui
-version: '1.1'
+version: '1.2'
 author: toshi_a
 name: ナウい引用
 description: 新しい引用の形に対応するナウいプラグイン
