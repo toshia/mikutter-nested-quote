@@ -15,9 +15,9 @@ class Gdk::NestedQuote < Gdk::SubParts
     if has_tweet_url?
       Thread.new(get_tweet_ids) { |tweet_ids|
         messages = []
-        tweet_ids.each_with_index.map { |message_id, i|
-          Thread.new(message_id, i) { |message_id, i|
-            messages[i] = Message.findbyid(message_id.to_i) } }.each(&:join)
+        tweet_ids.each_with_index.map { |message_id, index|
+          Thread.new {
+            messages[index] = Message.findbyid(message_id.to_i) } }.each(&:join)
         @messages = messages.select { |m| m.is_a? Message }
         Delayer.new {
           render_messages } } end end
@@ -173,12 +173,12 @@ class Gdk::NestedQuote < Gdk::SubParts
 end
 
 Plugin.create :nested_quote do
-    command(:copy_tweet_url,
-      name: 'ツイートのURLをコピー',
-      condition: Proc.new{ |opt|
-        not opt.messages.any?(&:system?)},
-      visible: true,
-      role: :timeline) do |opt|
-        Gtk::Clipboard.copy("https://twitter.com/#{opt.messages.first.message.idname}/status/#{opt.messages.first.message.id}")
+  command(:copy_tweet_url,
+          name: 'ツイートのURLをコピー',
+          condition: Proc.new{ |opt|
+            not opt.messages.any?(&:system?)},
+          visible: true,
+          role: :timeline) do |opt|
+    Gtk::Clipboard.copy(opt.messages.map(&:parma_link).join("\n".freeze))
   end
 end
