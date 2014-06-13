@@ -5,7 +5,7 @@ class Gdk::NestedQuote < Gdk::SubParts
 
   TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?(?<screen_name>[a-zA-Z0-9_]+)\/status(?:es)?\/(?<id>\d+)(?:\?.*)?$/,
                 /^http:\/\/favstar\.fm\/users\/(?<screen_name>[a-zA-Z0-9_]+)\/status\/(?<id>\d+)/,
-                /^http:\/\/aclog\.koba789\.com\/i\/(?<id>\d+)/]
+                /^http:\/\/aclog\.koba789\.com\/i\/(?<id>\d+)/].freeze
 
   attr_reader :icon_width, :icon_height
 
@@ -104,9 +104,9 @@ class Gdk::NestedQuote < Gdk::SubParts
   def header_right(message, context = dummy_context)
     now = Time.now
     hms = if message[:created].year == now.year && message[:created].month == now.month && message[:created].day == now.day
-            message[:created].strftime('%H:%M:%S')
+            message[:created].strftime('%H:%M:%S'.freeze)
           else
-            message[:created].strftime('%Y/%m/%d %H:%M:%S')
+            message[:created].strftime('%Y/%m/%d %H:%M:%S'.freeze)
           end
     attr_list, text = Pango.parse_markup("<span foreground=\"#999999\">#{Pango.escape(hms)}</span>")
     layout = context.create_pango_layout
@@ -177,7 +177,7 @@ Plugin.create :nested_quote do
   # ==== Return
   # Hash データソース
   def datasources
-    ds = {nested_quoted_myself: "ナウい引用(全てのアカウント)"}
+    ds = {nested_quoted_myself: "ナウい引用(全てのアカウント)".freeze}
     Service.each do |service|
       ds["nested_quote_quotedby_#{service.user_obj.id}".to_sym] = "@#{service.user_obj.idname}/ナウい引用" end
     ds end
@@ -204,6 +204,5 @@ Plugin.create :nested_quote do
       unless quoted_services.empty?
         quoted_services.each do |service|
           Plugin.call :extract_receive_message, "nested_quote_quotedby_#{service.user_obj.id}".to_sym, [message] end
-        Plugin.call :extract_receive_message, :nested_quoted_myself, [message]
-        notice "nested_quoted_myself: #{message.to_s}" end end end
+        Plugin.call :extract_receive_message, :nested_quoted_myself, [message] end end end
 end
