@@ -3,9 +3,9 @@
 class Gdk::NestedQuote < Gdk::SubParts
   regist
 
-  TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/,
-                /^http:\/\/favstar\.fm\/users\/[a-zA-Z0-9_]+\/status\/(\d+)/,
-                /^http:\/\/aclog\.koba789\.com\/i\/(\d+)/]
+  TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?(?<screen_name>[a-zA-Z0-9_]+)\/status(?:es)?\/(?<id>\d+)(?:\?.*)?$/,
+                /^http:\/\/favstar\.fm\/users\/(?<screen_name>[a-zA-Z0-9_]+)\/status\/(?<id>\d+)/,
+                /^http:\/\/aclog\.koba789\.com\/i\/(?<id>\d+)/]
 
   attr_reader :icon_width, :icon_height
 
@@ -58,7 +58,7 @@ class Gdk::NestedQuote < Gdk::SubParts
   def id2url(url)
     TWEET_URL.each{ |regexp|
       m = regexp.match(url)
-      return m[1] if m }
+      return m[:id] if m }
     false end
 
   # ツイートへのリンクを含んでいれば真
@@ -173,6 +173,15 @@ class Gdk::NestedQuote < Gdk::SubParts
 end
 
 Plugin.create :nested_quote do
+  # このプラグインが提供するデータソースを返す
+  # ==== Return
+  # Hash データソース
+  def datasources
+    ds = {nested_quoted_myself: "ナウい引用(全てのアカウント)"}
+    Service.each do |service|
+      ds["nested_quote_quotedby_#{service.user_obj.id}".to_sym] = "@#{service.user_obj.idname}/ナウい引用" end
+    ds end
+
   command(:copy_tweet_url,
           name: 'ツイートのURLをコピー',
           condition: Proc.new{ |opt|
@@ -181,4 +190,20 @@ Plugin.create :nested_quote do
           role: :timeline) do |opt|
     Gtk::Clipboard.copy(opt.messages.map(&:parma_link).join("\n".freeze))
   end
+
+  filter_extract_datasources do |ds|
+    [ds.merge(datasources)] end
+
+  # 管理しているデータソースに値を注入する
+  on_appear do |ms|
+    ms.each do |message|
+      quoted_screen_names = message.entity.select{ |entity| :urls == entity[:slug] }.map{ |entity|
+        Gdk::NestedQuote::TWEET_URL.find { |matcher| matcher =~ entity[:expanded_url] }
+        $~[:screen_name] if defined? $~[:screen_name] }.uniq
+      quoted_services = Service.select{|service| quoted_screen_names.include? service.user_obj.idname }
+      unless quoted_services.empty?
+        quoted_services.each do |service|
+          Plugin.call :extract_receive_message, "nested_quote_quotedby_#{service.user_obj.id}".to_sym, [message] end
+        Plugin.call :extract_receive_message, :nested_quoted_myself, [message]
+        notice "nested_quoted_myself: #{message.to_s}" end end end
 end
