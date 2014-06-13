@@ -23,7 +23,6 @@ class Gdk::NestedQuote < Gdk::SubParts
           render_messages } } end end
 
   def render_messages
-    notice "found #{@messages.inspect}"
     if not helper.destroyed?
       helper.on_modify
       helper.reset_height
