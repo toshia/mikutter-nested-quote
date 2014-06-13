@@ -1,7 +1,7 @@
 ---
 slug: :nested_quote
 depends:
-  mikutter: 0.2.2.1225
+  mikutter: 3.0.0
   plugin:
   - gtk
   - gui
