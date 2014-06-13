@@ -3,9 +3,9 @@
 class Gdk::NestedQuote < Gdk::SubParts
   regist
 
-  TWEET_URL = [ /^https?:\/\/twitter.com\/(?:#!\/)?[a-zA-Z0-9_]+\/status(?:es)?\/(\d+)(?:\?.*)?$/,
-                /^http:\/\/favstar\.fm\/users\/[a-zA-Z0-9_]+\/status\/(\d+)/,
-                /^http:\/\/aclog\.koba789\.com\/i\/(\d+)/]
+  TWEET_URL = [ %r[\Ahttps?://twitter.com/(?:#!/)?(?<screen_name>[a-zA-Z0-9_]+)/status(?:es)?/(?<id>\d+)(?:\?.*)?\Z],
+                %r[\Ahttp://favstar\.fm/users/(?<screen_name>[a-zA-Z0-9_]+)/status/(?<id>\d+)],
+                %r[\Ahttp://aclog\.koba789\.com/i/(?<id>\d+)]].freeze
 
   attr_reader :icon_width, :icon_height
 
@@ -15,15 +15,14 @@ class Gdk::NestedQuote < Gdk::SubParts
     if has_tweet_url?
       Thread.new(get_tweet_ids) { |tweet_ids|
         messages = []
-        tweet_ids.each_with_index.map { |message_id, i|
-          Thread.new(message_id, i) { |message_id, i|
-            messages[i] = Message.findbyid(message_id.to_i) } }.each(&:join)
+        tweet_ids.each_with_index.map { |message_id, index|
+          Thread.new {
+            messages[index] = Message.findbyid(message_id.to_i) } }.each(&:join)
         @messages = messages.select { |m| m.is_a? Message }
         Delayer.new {
           render_messages } } end end
 
   def render_messages
-    notice "found #{@messages.inspect}"
     if not helper.destroyed?
       helper.on_modify
       helper.reset_height
@@ -58,7 +57,7 @@ class Gdk::NestedQuote < Gdk::SubParts
   def id2url(url)
     TWEET_URL.each{ |regexp|
       m = regexp.match(url)
-      return m[1] if m }
+      return m[:id] if m }
     false end
 
   # ツイートへのリンクを含んでいれば真
@@ -104,9 +103,9 @@ class Gdk::NestedQuote < Gdk::SubParts
   def header_right(message, context = dummy_context)
     now = Time.now
     hms = if message[:created].year == now.year && message[:created].month == now.month && message[:created].day == now.day
-            message[:created].strftime('%H:%M:%S')
+            message[:created].strftime('%H:%M:%S'.freeze)
           else
-            message[:created].strftime('%Y/%m/%d %H:%M:%S')
+            message[:created].strftime('%Y/%m/%d %H:%M:%S'.freeze)
           end
     attr_list, text = Pango.parse_markup("<span foreground=\"#999999\">#{Pango.escape(hms)}</span>")
     layout = context.create_pango_layout
@@ -173,12 +172,36 @@ class Gdk::NestedQuote < Gdk::SubParts
 end
 
 Plugin.create :nested_quote do
-    command(:copy_tweet_url,
-      name: 'ツイートのURLをコピー',
-      condition: Proc.new{ |opt|
-        not opt.messages.any?(&:system?)},
-      visible: true,
-      role: :timeline) do |opt|
-        Gtk::Clipboard.copy("https://twitter.com/#{opt.messages.first.message.idname}/status/#{opt.messages.first.message.id}")
+  # このプラグインが提供するデータソースを返す
+  # ==== Return
+  # Hash データソース
+  def datasources
+    ds = {nested_quoted_myself: "ナウい引用(全てのアカウント)".freeze}
+    Service.each do |service|
+      ds["nested_quote_quotedby_#{service.user_obj.id}".to_sym] = "@#{service.user_obj.idname}/ナウい引用" end
+    ds end
+
+  command(:copy_tweet_url,
+          name: 'ツイートのURLをコピー',
+          condition: Proc.new{ |opt|
+            not opt.messages.any?(&:system?)},
+          visible: true,
+          role: :timeline) do |opt|
+    Gtk::Clipboard.copy(opt.messages.map(&:parma_link).join("\n".freeze))
   end
+
+  filter_extract_datasources do |ds|
+    [ds.merge(datasources)] end
+
+  # 管理しているデータソースに値を注入する
+  on_appear do |ms|
+    ms.each do |message|
+      quoted_screen_names = message.entity.select{ |entity| :urls == entity[:slug] }.map{ |entity|
+        Gdk::NestedQuote::TWEET_URL.find { |matcher| matcher =~ entity[:expanded_url] }
+        $~[:screen_name] if defined? $~[:screen_name] }.uniq
+      quoted_services = Service.select{|service| quoted_screen_names.include? service.user_obj.idname }
+      unless quoted_services.empty?
+        quoted_services.each do |service|
+          Plugin.call :extract_receive_message, "nested_quote_quotedby_#{service.user_obj.id}".to_sym, [message] end
+        Plugin.call :extract_receive_message, :nested_quoted_myself, [message] end end end
 end
