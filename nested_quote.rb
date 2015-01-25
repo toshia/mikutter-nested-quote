@@ -198,7 +198,7 @@ Plugin.create :nested_quote do
     ms.each do |message|
       quoted_screen_names = message.entity.select{ |entity| :urls == entity[:slug] }.map{ |entity|
         Gdk::NestedQuote::TWEET_URL.find { |matcher| matcher =~ entity[:expanded_url] }
-        $~[:screen_name] if defined? $~[:screen_name] }.uniq
+        $~[:screen_name] if $~ && $~.names.include?("screen_name") }.uniq
       quoted_services = Service.select{|service| quoted_screen_names.include? service.user_obj.idname }
       unless quoted_services.empty?
         quoted_services.each do |service|
